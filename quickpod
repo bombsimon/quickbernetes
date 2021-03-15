@@ -1,0 +1,95 @@
+#!/usr/bin/env perl
+
+use warnings;
+use strict;
+use feature qw( say );
+
+use Readonly;
+use Data::Printer;
+use Mojo::Template;
+
+Readonly my $NAMESPACE            => $ENV{NS}      // "default";
+Readonly my $SERVICE_ACCOUNT_NAME => $ENV{SA}      // "default";
+Readonly my $PROJECT              => $ENV{PROJECT} // "some-project";
+Readonly my $IMAGE                => $ENV{IMG}     // "google/cloud-sdk:slim";
+Readonly my $NODE_SELECTOR        => $ENV{NODE_SELECTOR};
+
+Readonly my $NAMESPACE_TPL => <<'EOF';
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: <%= $name %>
+EOF
+
+Readonly my $SERVICE_ACCOUNT_TPL => <<'EOF';
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app: <%= $name %>
+  name: <%= $name %>
+  annotations:
+    iam.gke.io/gcp-service-account: "<%= $name%>@<%= $project %>.iam.gserviceaccount.com"
+EOF
+
+Readonly my $POD_TPL => <<'EOF';
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: <%= $name %>
+  labels:
+    app: <%= $name %>
+spec:
+  serviceAccountName: <%= $service_account %>
+  containers:
+  - name: <%= $name %>
+    image: <%= $image %>
+    stdin: true
+    tty: true
+  % if ( $node_selector ) {
+  nodeSelector:
+    kubernetes.io/hostname: <%= $node_selector %>
+  % }
+EOF
+
+my $mt   = Mojo::Template->new( vars => 1 );
+my @yaml = ();
+
+push(
+    @yaml,
+    $mt->render(
+        $NAMESPACE_TPL,
+        {
+            name => $NAMESPACE,
+        }
+    )
+) if $NAMESPACE ne 'default';
+
+push(
+    @yaml,
+    $mt->render(
+        $SERVICE_ACCOUNT_TPL,
+        {
+            name    => $SERVICE_ACCOUNT_NAME,
+            project => $PROJECT,
+        }
+    )
+) if $SERVICE_ACCOUNT_NAME ne 'default';
+
+push(
+    @yaml,
+    $mt->render(
+        $POD_TPL,
+        {
+            name            => "$ENV{USER}-temp",
+            service_account => $SERVICE_ACCOUNT_NAME,
+            image           => $IMAGE,
+            node_selector   => $NODE_SELECTOR,
+        }
+    )
+);
+
+say @yaml;
