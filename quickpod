@@ -27,6 +27,7 @@ Readonly my $SERVICE_ACCOUNT_TPL => <<'EOF';
 apiVersion: v1
 kind: ServiceAccount
 metadata:
+  namespace: <%= $namespace %>
   labels:
     app: <%= $name %>
   name: <%= $name %>
@@ -39,6 +40,7 @@ Readonly my $POD_TPL => <<'EOF';
 apiVersion: v1
 kind: Pod
 metadata:
+  namespace: <%= $namespace %>
   name: <%= $name %>
   labels:
     app: <%= $name %>
@@ -73,8 +75,9 @@ push(
     $mt->render(
         $SERVICE_ACCOUNT_TPL,
         {
-            name    => $SERVICE_ACCOUNT_NAME,
-            project => $PROJECT,
+            namespace => $NAMESPACE,
+            name      => $SERVICE_ACCOUNT_NAME,
+            project   => $PROJECT,
         }
     )
 ) if $SERVICE_ACCOUNT_NAME ne 'default';
@@ -84,6 +87,7 @@ push(
     $mt->render(
         $POD_TPL,
         {
+            namespace       => $NAMESPACE,
             name            => "$ENV{USER}-temp",
             service_account => $SERVICE_ACCOUNT_NAME,
             image           => $IMAGE,
