@@ -1,0 +1,167 @@
+#!/usr/bin/env perl
+
+=head1 NAME
+
+quickbernetes - Kuberentes stuff, quickly
+
+=head1 VERSION
+
+0.001
+
+=head1 DESCRIPTION
+
+Just a super naive approach at creating Kubernetes resources dynamically.
+
+=head1 SYNOPSIS
+
+All flags can be overridden by setting an environment variable to the uppercase
+value of the flag. F.ex. the flag `service_account` can be overridden by setting
+environment variable `SERVICE_ACCOUNT`.
+
+  $ NAMESPACE=my-ns quickbernetes --image curl
+
+For more details, see the help.
+
+  $ quickbernetes --help
+
+=head1 METHODS
+
+=cut
+
+use warnings;
+use strict;
+use feature qw( say );
+
+use Applify;
+use Readonly;
+use Mojo::Template;
+
+#<<< Keep options on a single line.
+option str => namespace       => 'Namespace to use', default => 'default';
+option str => service_account => 'Service account', default => 'default';
+option str => project         => 'Will be used in service account annotation if specified';
+option str => image           => 'The image to run', default => 'google/cloud-sdk:slim';
+option str => node_selector   => 'Specific (optional) node to put pod on';
+#>>>
+
+Readonly my $NAMESPACE_TPL => <<'EOF';
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: <%= $name %>
+EOF
+
+Readonly my $SERVICE_ACCOUNT_TPL => <<'EOF';
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  namespace: <%= $namespace %>
+  labels:
+    app: <%= $name %>
+  name: <%= $name %>
+  annotations:
+    iam.gke.io/gcp-service-account: "<%= $name%>"
+EOF
+
+Readonly my $POD_TPL => <<'EOF';
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: <%= $namespace %>
+  name: <%= $name %>
+  labels:
+    app: <%= $name %>
+spec:
+  serviceAccountName: <%= $service_account %>
+  containers:
+  - name: <%= $name %>
+    image: <%= $image %>
+    stdin: true
+    tty: true
+  % if ( $node_selector ) {
+  nodeSelector:
+    kubernetes.io/hostname: <%= $node_selector %>
+  % }
+EOF
+
+=head2 app
+
+The main entry point - this is where the magic happens!
+
+=cut
+
+app {
+    my ( $self, %extra_args ) = @_;
+
+    $self->_populate_from_env();
+
+    my $mt   = Mojo::Template->new( vars => 1 );
+    my @yaml = ();
+
+    push(
+        @yaml,
+        $mt->render(
+            $NAMESPACE_TPL,
+            {
+                name => $self->namespace,
+            }
+        )
+    ) if $self->namespace ne 'default';
+
+    push(
+        @yaml,
+        $mt->render(
+            $SERVICE_ACCOUNT_TPL,
+            {
+                namespace => $self->namespace,
+                name      => $self->project
+                ? sprintf( "%s@%s.iam.gserviceaccount.com", $self->service_account, $self->project )
+                : $self->service_account,
+            }
+        )
+    ) if $self->service_account ne 'default';
+
+    push(
+        @yaml,
+        $mt->render(
+            $POD_TPL,
+            {
+                namespace       => $self->namespace,
+                name            => "$ENV{USER}-temp",
+                service_account => $self->service_account,
+                image           => $self->image,
+                node_selector   => $self->node_selector,
+            }
+        )
+    );
+
+    say @yaml;
+};
+
+=head2 _populate_from_env
+
+Override any flag with a potential environment variable.
+
+=cut
+
+sub _populate_from_env {
+    my $self = shift;
+
+    foreach my $option ( @{ $self->_script->options } ) {
+        my $option_name = $option->{name};
+        $self->{$option_name} = $ENV{ uc $option_name } if $ENV{ uc $option_name };
+    }
+
+    return;
+}
+
+=head1 AUTHOR
+
+Simon Sawert = L<simon@sawert.se>
+
+=cut
+
+1;
