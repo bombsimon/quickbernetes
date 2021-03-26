@@ -1,7 +1,6 @@
 #!/usr/bin/env perl
 
 =head1 NAME
-
 quickbernetes - Kuberentes stuff, quickly
 
 =head1 VERSION
@@ -62,7 +61,7 @@ metadata:
     app: <%= $name %>
   name: <%= $name %>
   annotations:
-    iam.gke.io/gcp-service-account: "<%= $name%>"
+    iam.gke.io/gcp-service-account: "<%= $sa_name%>"
 EOF
 
 Readonly my $POD_TPL => <<'EOF';
@@ -117,7 +116,8 @@ app {
             $SERVICE_ACCOUNT_TPL,
             {
                 namespace => $self->namespace,
-                name      => $self->project
+                name      => $self->service_account,
+                sa_name   => $self->project
                 ? sprintf( "%s@%s.iam.gserviceaccount.com", $self->service_account, $self->project )
                 : $self->service_account,
             }
